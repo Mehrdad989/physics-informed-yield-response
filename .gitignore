@@ -11,6 +11,8 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data (we'll keep these out of git)
-data/raw/
-data/processed/
+# Data (ignore contents, keep folder structure)
+data/raw/**
+data/processed/**
+!data/raw/.gitkeep
+!data/processed/.gitkeep
