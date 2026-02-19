@@ -51,6 +51,59 @@ def sample_region_params(
         for i in range(n_regions)
     ]
 
+def region_params_from_features(
+    *,
+    rng: np.random.Generator,
+    features: dict[str, np.ndarray],
+    y_min: float = 0.5,
+    noise_scale: float = 0.15,
+) -> list[RegionParams]:
+    """
+    Create region parameters from region-level features + small noise.
+
+    features must include arrays of equal length:
+      - region (int)
+      - aridity_index in [0,1]
+      - soil_whc in [50,250]
+      - heat_stress in [0,1]
+    """
+    region = np.asarray(features["region"], dtype=int)
+    aridity = np.asarray(features["aridity_index"], dtype=float)
+    soil = np.asarray(features["soil_whc"], dtype=float)
+    heat = np.asarray(features["heat_stress"], dtype=float)
+
+    n = region.size
+    if not (aridity.size == soil.size == heat.size == n):
+        raise ValueError("All feature arrays must have the same length")
+
+    # Normalize soil roughly to 0..1
+    soil_n = (soil - 50.0) / (250.0 - 50.0)
+
+    # Base + effects (chosen to keep values in realistic ranges after clipping)
+    ymax = 6.5 + 2.0 * soil_n + 1.0 * aridity - 2.0 * heat
+    r_opt = 350.0 + 180.0 * aridity + 40.0 * soil_n - 60.0 * heat
+    width = 100.0 + 80.0 * soil_n - 30.0 * heat
+
+    # Add small parameter noise
+    ymax += rng.normal(0.0, noise_scale, size=n)
+    r_opt += rng.normal(0.0, 20.0 * noise_scale, size=n)
+    width += rng.normal(0.0, 40.0 * noise_scale, size=n)
+
+    # Clip into allowed ranges (physics-informed bounds)
+    ymax = np.clip(ymax, 5.0, 10.0)
+    r_opt = np.clip(r_opt, 300.0, 600.0)
+    width = np.clip(width, 80.0, 200.0)
+
+    return [
+        RegionParams(
+            region=int(region[i]),
+            ymax=float(ymax[i]),
+            r_opt_mm=float(r_opt[i]),
+            width_mm=float(width[i]),
+            y_min=float(y_min),
+        )
+        for i in range(n)
+    ]
 
 def generate_synthetic_region_yield(
     *,
@@ -61,6 +114,8 @@ def generate_synthetic_region_yield(
     rain_max_mm: float = 800.0,
     sigma_y: float = 0.4,
     include_true_params: bool = True,
+    region_features: dict[str, np.ndarray] | None = None,
+    param_noise_scale: float = 0.15,
 ) -> dict[str, np.ndarray]:
     """
     Generate a synthetic dataset with region-specific yield response parameters.
@@ -78,7 +133,16 @@ def generate_synthetic_region_yield(
 
     rng = np.random.default_rng(seed)
 
-    params = sample_region_params(rng=rng, n_regions=n_regions)
+    if region_features is None:
+        params = sample_region_params(rng=rng, n_regions=n_regions)
+    else:
+        if int(np.max(region_features["region"])) != n_regions - 1:
+            raise ValueError("region_features['region'] must be 0..n_regions-1")
+        params = region_params_from_features(
+            rng=rng,
+            features=region_features,
+            noise_scale=param_noise_scale,
+        )
 
     n = n_regions * n_per_region
     region = np.repeat(np.arange(n_regions, dtype=int), n_per_region)
