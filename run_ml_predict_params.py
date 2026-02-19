@@ -5,6 +5,8 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from piyrm.features import generate_region_features
 from piyrm.fit import fit_hump_by_region
 from piyrm.synthetic import generate_synthetic_region_yield
+from piyrm.ml import build_region_feature_matrix, fit_linear_multioutput
+
 
 
 def X_from_features(feat: dict[str, np.ndarray]) -> np.ndarray:
@@ -41,7 +43,7 @@ Y_true = np.column_stack(
     ]
 )
 
-X = X_from_features(feat)
+X = build_region_feature_matrix(feat)
 
 # Train/test split on regions
 rng = np.random.default_rng(0)
@@ -50,10 +52,9 @@ rng.shuffle(idx)
 split = int(0.8 * n_regions)
 train_idx, test_idx = idx[:split], idx[split:]
 
-model = LinearRegression()
-model.fit(X[train_idx], Y_hat[train_idx])
+model = fit_linear_multioutput(X[train_idx], Y_hat[train_idx])
 
-pred = model.predict(X[test_idx])
+pred =  model.predict(X[test_idx])
 
 print("Multi-target parameter prediction (LinearRegression)")
 for j, name in enumerate(param_names):
