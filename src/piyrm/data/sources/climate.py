@@ -7,29 +7,29 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class ClimateConfig:
-    """
-    Placeholder config for climate aggregation (PRISM/Daymet/ERA5).
-
-    Later we’ll implement:
-    - download or read gridded data
-    - aggregate to county × year × crop growing season windows
-    """
-    raw_dir: Path = Path("data/raw/climate")
     processed_dir: Path = Path("data/processed")
+    prism_county_year_file: str = "prism_county_year_growseason.csv"
 
 
 def load_or_stub_climate_panel(cfg: ClimateConfig) -> pd.DataFrame:
     """
-    Return an empty/stub dataframe with planned climate schema.
+    Loads PRISM-derived county-year-crop growing-season precipitation, if present.
 
-    Columns (planned):
+    Returns schema:
       - year (int)
-      - state_fips (str)
       - county_fips (str)
+      - crop (str)
       - precip_mm (float)
-      - gdd (float)
-      - heat_days (float)
-      - drought_index (float)
     """
-    cols = ["year", "state_fips", "county_fips", "precip_mm", "gdd", "heat_days", "drought_index"]
-    return pd.DataFrame(columns=cols)
+    path = cfg.processed_dir / cfg.prism_county_year_file
+    if not path.exists():
+        return pd.DataFrame(columns=["year", "county_fips", "crop", "precip_mm"])
+
+    df = pd.read_csv(path, dtype={"county_fips": str, "crop": str})
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
+
+    out = df.rename(columns={"ppt_mm_gs": "precip_mm"})[["year", "county_fips", "crop", "precip_mm"]].copy()
+    out = out.dropna(subset=["year", "precip_mm"])
+    out["year"] = out["year"].astype(int)
+    out["county_fips"] = out["county_fips"].astype(str).str.zfill(5)
+    return out
